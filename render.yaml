@@ -1,0 +1,71 @@
+services:
+  # Next.js web app
+  - type: web
+    name: trendforge-web
+    runtime: node
+    plan: starter
+    buildCommand: npm ci && npx prisma generate && npm run build
+    startCommand: npm start
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: WORKER_API_URL
+        sync: false
+      - key: NODE_VERSION
+        value: "20"
+
+  # FastAPI worker API (HTTP endpoints for triggering jobs)
+  - type: web
+    name: trendforge-worker-api
+    runtime: docker
+    plan: starter
+    dockerfilePath: ./workers/Dockerfile
+    dockerContext: ./workers
+    dockerCommand: uvicorn api:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+
+  # Celery worker (processes background jobs)
+  - type: worker
+    name: trendforge-celery-worker
+    runtime: docker
+    plan: starter
+    dockerfilePath: ./workers/Dockerfile
+    dockerContext: ./workers
+    dockerCommand: celery -A celery_app worker --loglevel=info --concurrency=2
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+
+  # Celery beat (schedules periodic jobs)
+  - type: worker
+    name: trendforge-celery-beat
+    runtime: docker
+    plan: starter
+    dockerfilePath: ./workers/Dockerfile
+    dockerContext: ./workers
+    dockerCommand: celery -A celery_app beat --loglevel=info
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        sync: false
