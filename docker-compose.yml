@@ -1,0 +1,77 @@
+services:
+  db:
+    image: pgvector/pgvector:pg17
+    container_name: trendforge-db
+    restart: unless-stopped
+    ports: ["5432:5432"]
+    environment:
+      POSTGRES_USER: trendforge
+      POSTGRES_PASSWORD: trendforge
+      POSTGRES_DB: trendforge
+    volumes:
+      - trendforge_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "trendforge"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: trendforge-redis
+    restart: unless-stopped
+    ports: ["6379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  worker:
+    build:
+      context: ./workers
+      dockerfile: Dockerfile
+    container_name: trendforge-worker
+    restart: unless-stopped
+    depends_on:
+      db: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://trendforge:trendforge@db:5432/trendforge
+      REDIS_URL: redis://redis:6379/0
+    command: celery -A celery_app worker --loglevel=info --concurrency=4
+
+  beat:
+    build:
+      context: ./workers
+      dockerfile: Dockerfile
+    container_name: trendforge-beat
+    restart: unless-stopped
+    depends_on:
+      db: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://trendforge:trendforge@db:5432/trendforge
+      REDIS_URL: redis://redis:6379/0
+    command: celery -A celery_app beat --loglevel=info
+
+  api:
+    build:
+      context: ./workers
+      dockerfile: Dockerfile
+    container_name: trendforge-worker-api
+    restart: unless-stopped
+    ports: ["8842:8842"]
+    depends_on:
+      db: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://trendforge:trendforge@db:5432/trendforge
+      REDIS_URL: redis://redis:6379/0
+    command: uvicorn api:app --host 0.0.0.0 --port 8842
+
+volumes:
+  trendforge_pgdata:
