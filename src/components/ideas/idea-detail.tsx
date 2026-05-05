@@ -90,6 +90,7 @@ const STATUS_VARIANT: Record<string, "default" | "secondary" | "warning" | "info
   in_progress: "info",
   launched: "success",
   declined: "destructive",
+  archived: "secondary",
 };
 
 function trendIcon(dir: string | null) {
@@ -543,10 +544,11 @@ export function IdeaDetail({ idea }: { idea: Idea }) {
             <SelectTrigger className="w-[180px]"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="pending">Pending</SelectItem>
-              <SelectItem value="approved">Approved</SelectItem>
-              <SelectItem value="in_progress">In progress</SelectItem>
-              <SelectItem value="launched">Launched</SelectItem>
-              <SelectItem value="declined">Declined</SelectItem>
+<SelectItem value="approved">Approved</SelectItem>
+<SelectItem value="in_progress">In progress</SelectItem>
+<SelectItem value="launched">Launched</SelectItem>
+<SelectItem value="declined">Declined</SelectItem>
+<SelectItem value="archived">Archived</SelectItem>
             </SelectContent>
           </Select>
           <Input

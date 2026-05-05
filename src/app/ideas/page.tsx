@@ -16,6 +16,7 @@ const STATUS_TABS = [
   { value: "in_progress", label: "In progress" },
   { value: "launched", label: "Launched" },
   { value: "declined", label: "Declined" },
+  { value: "archived", label: "Archived" },
 ];
 
 type SP = Promise<{

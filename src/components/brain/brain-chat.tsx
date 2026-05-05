@@ -29,10 +29,16 @@ export function BrainChat({
   const [convoId, setConvoId] = useState<string | undefined>(conversationId);
   const [busy, setBusy] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
-
+// eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
+
+  // Re-sync state pag nag-navigate to a different conversation
+  useEffect(() => {
+    setMessages(initialMessages);
+    setConvoId(conversationId);
+  }, [conversationId]);
 
   async function send(text: string) {
     if (!text.trim() || busy) return;
@@ -67,8 +73,12 @@ export function BrainChat({
                 return next;
               });
             } else if (obj.type === "done") {
-              if (obj.conversationId) setConvoId(obj.conversationId);
-            } else if (obj.type === "error") {
+                if (obj.conversationId && obj.conversationId !== convoId) {
+                  setConvoId(obj.conversationId);
+                  // Update URL para hindi mawala yung chat pag nag-refresh
+                  window.history.replaceState(null, "", `/brain?c=${obj.conversationId}`);
+                }
+              } else if (obj.type === "error") {
               setMessages((m) => {
                 const next = [...m];
                 next[next.length - 1] = { role: "assistant", content: `⚠️ ${obj.error}` };

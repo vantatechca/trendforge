@@ -17,7 +17,7 @@ export default async function BrainPage({ searchParams }: { searchParams: SP }) 
   const [conversations, currentMessages] = await Promise.all([
     prisma.conversation.findMany({
       orderBy: { updatedAt: "desc" },
-      take: 30,
+      take: 100,
       include: { _count: { select: { messages: true } } },
     }),
     conversationId

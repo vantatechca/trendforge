@@ -27,6 +27,7 @@ const STATUS_VARIANT: Record<string, "default" | "secondary" | "warning" | "info
   in_progress: "info",
   launched: "success",
   declined: "destructive",
+  archived: "secondary",
 };
 
 export function IdeaCard({ idea }: { idea: IdeaCardData }) {
