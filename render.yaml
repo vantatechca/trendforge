@@ -2,27 +2,22 @@
 # TrendForge — Render Blueprint (Option A: workers only)
 # =============================================================================
 #
-# ⚠️  This Blueprint manages 3 services:
-#     - trendforge-worker-api  (FastAPI control plane)
-#     - trendforge-celery-worker (Celery worker, free-tier hack)
-#     - trendforge-celery-beat (Celery beat scheduler, free-tier hack)
+# Manages 3 services:
+#   - trendforge-worker-api   (FastAPI control plane)
+#   - trendforge-celery-worker (Celery worker, free-tier hack)
+#   - trendforge-celery-beat   (Celery beat scheduler, free-tier hack)
 #
-#     The web frontend (`trendforge`, Starter plan) is managed MANUALLY,
-#     hindi siya kasama dito. Pag may schema changes, manual mong i-deploy
-#     yung `trendforge` from the Render dashboard.
+# The web frontend (`trendforge`, Starter plan) is managed manually.
 #
 # Free tier caveats:
 #   1. Worker-api sleeps after 15 min idle. First request = 30-60s cold start.
 #   2. Celery worker + beat use a "web service" hack — runs uvicorn placeholder
 #      side-by-side with the Celery process so Render thinks they're healthy.
-#   3. Pag natulog ang celery-beat, miss niya ang scheduled tasks.
-#      MUST setup external pinger (cron-job.org):
+#   3. MUST setup external pinger (cron-job.org):
 #        - Ping https://trendforge-celery-worker.onrender.com/health every 10 min
 #        - Ping https://trendforge-celery-beat.onrender.com/health every 10 min
 #   4. Tasks running > 15 min may get killed mid-execution.
-#   5. Free tier total cap = 750 hours/month across all web services.
-#
-# Pre-deploy: `workers/health_only.py` na file kailangan present sa repo.
+#   5. Free tier total cap = 750 hours/month.
 # =============================================================================
 
 services:
@@ -45,15 +40,15 @@ services:
         value: claude-sonnet-4-5
 
   # ---------- Celery worker (free-tier hack: web service wrapper) ----------
+  # Single-line command para iwasan yung "Unterminated quoted string" error.
+  # Ang & operator ay nagpapatakbo ng uvicorn sa background, then exec ng celery.
   - type: web
     name: trendforge-celery-worker
     runtime: docker
     plan: free
     dockerfilePath: ./workers/Dockerfile
     dockerContext: ./workers
-    dockerCommand: |
-      sh -c "uvicorn health_only:app --host 0.0.0.0 --port $PORT &
-             celery -A celery_app worker --loglevel=info --concurrency=1 --without-gossip --without-mingle"
+    dockerCommand: sh -c 'uvicorn health_only:app --host 0.0.0.0 --port $PORT & exec celery -A celery_app worker --loglevel=info --concurrency=1 --without-gossip --without-mingle'
     envVars:
       - key: DATABASE_URL
         sync: false
@@ -71,9 +66,7 @@ services:
     plan: free
     dockerfilePath: ./workers/Dockerfile
     dockerContext: ./workers
-    dockerCommand: |
-      sh -c "uvicorn health_only:app --host 0.0.0.0 --port $PORT &
-             celery -A celery_app beat --loglevel=info"
+    dockerCommand: sh -c 'uvicorn health_only:app --host 0.0.0.0 --port $PORT & exec celery -A celery_app beat --loglevel=info'
     envVars:
       - key: DATABASE_URL
         sync: false
