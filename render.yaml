@@ -1,26 +1,62 @@
+# =============================================================================
+# TrendForge — Render Blueprint (PURE FREE TIER, TESTING ONLY)
+# =============================================================================
+#
+# ⚠️  WARNING: This config is for testing/POC, not production.
+#
+# Known fragility on free tier:
+#   1. Web + API sleep after 15 min idle. First request takes 30-60s cold start.
+#   2. Celery worker is a "web service" hack — runs HTTP placeholder side-by-side
+#      with the Celery process so Render thinks it's healthy. If you forget to
+#      ping it, it sleeps and pending tasks pile up sa Redis (Upstash 256MB).
+#   3. Celery beat is the same hack. Pag natulog, miss niya ang scheduled tasks.
+#      Ang workaround: use external pinger (cron-job.org or GH Actions) to
+#      ping the worker /health every 10 mins to keep it warm.
+#   4. Tasks running > 15 min may get killed mid-execution kapag walang traffic.
+#   5. Free tier = 750 hours/month total across all web services. 4 services
+#      running 24/7 = 4 × 720 = 2880 hours. You'll hit the cap unless services
+#      sleep frequently. Render will start auto-suspending services para hindi
+#      ma-overage.
+#
+# Pre-deploy steps:
+#   1. Neon (https://neon.tech) — create project, copy POOLED connection string.
+#      Run sa SQL editor: CREATE EXTENSION IF NOT EXISTS vector;
+#   2. Upstash (https://upstash.com) — create Redis database, copy the
+#      "redis://" connection URL (with password embedded).
+#   3. Set up external pinger (https://cron-job.org, free):
+#      - Ping https://trendforge-celery-worker.onrender.com/health every 10 min
+#      - Ping https://trendforge-celery-beat.onrender.com/health every 10 min
+#      - Walang external pinger = walang scheduled scraping = walang point.
+#
+# Apply this blueprint sa Render dashboard, set the sync:false env vars manually.
+# =============================================================================
+
 services:
-  # Next.js web app
+  # ---------- Next.js web app ----------
   - type: web
     name: trendforge-web
     runtime: node
     plan: free
-    buildCommand: npm ci && npx prisma generate && npm run build
+    buildCommand: npm ci && npx prisma generate && npx prisma db push --accept-data-loss && npm run build
     startCommand: npm start
     envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: NODE_ENV
+        value: production
       - key: DATABASE_URL
+        sync: false           # paste Neon pooled connection string
+      - key: REDIS_URL
+        sync: false           # paste Upstash redis:// URL
+      # After worker-api deploys: https://trendforge-worker-api.onrender.com
+      - key: WORKER_API_URL
         sync: false
       - key: ANTHROPIC_API_KEY
         sync: false
       - key: ANTHROPIC_MODEL
         value: claude-sonnet-4-5
-      - key: REDIS_URL
-        sync: false
-      - key: WORKER_API_URL
-        sync: false
-      - key: NODE_VERSION
-        value: "20"
 
-  # FastAPI worker API (HTTP endpoints for triggering jobs manually)
+  # ---------- FastAPI control plane (HTTP triggers) ----------
   - type: web
     name: trendforge-worker-api
     runtime: docker
@@ -37,3 +73,47 @@ services:
         sync: false
       - key: ANTHROPIC_MODEL
         value: claude-sonnet-4-5
+
+  # ---------- Celery worker (free-tier hack: web service wrapper) ----------
+  # Render free tier walang background workers, so we wrap Celery sa isang
+  # web service na may dummy /health endpoint. Ang external pinger (cron-job.org)
+  # ang gagawing "alive" 24/7.
+  - type: web
+    name: trendforge-celery-worker
+    runtime: docker
+    plan: free
+    dockerfilePath: ./workers/Dockerfile
+    dockerContext: ./workers
+    # Tatakbo nang sabay: dummy uvicorn server (para may HTTP listener si Render)
+    # at ang Celery worker process.
+    dockerCommand: |
+      sh -c "uvicorn health_only:app --host 0.0.0.0 --port $PORT &
+             celery -A celery_app worker --loglevel=info --concurrency=1 --without-gossip --without-mingle"
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: ANTHROPIC_MODEL
+        value: claude-sonnet-4-5
+
+  # ---------- Celery beat (scheduler) ----------
+  # Same hack as worker above. Beat schedules tasks based sa celery_app.py
+  # (every 4h Reddit, daily YouTube, etc.). Kapag natulog ito, miss niya ang
+  # schedules — kaya MUST may external pinger.
+  - type: web
+    name: trendforge-celery-beat
+    runtime: docker
+    plan: free
+    dockerfilePath: ./workers/Dockerfile
+    dockerContext: ./workers
+    dockerCommand: |
+      sh -c "uvicorn health_only:app --host 0.0.0.0 --port $PORT &
+             celery -A celery_app beat --loglevel=info"
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        sync: false
